@@ -1,8 +1,8 @@
 site:
-  title: 我的导航
+  title: 梦的开始
   description: 个人网络导航站
-  author: Your Name
-  favicon: favicon.ico
+  author: SAK
+  favicon: favicon.png
   logo_text: 导航站
 fonts:
   title:
@@ -20,7 +20,7 @@ fonts:
 profile:
   title: Hello,
   subtitle: Welcome to My Navigation
-  description: 导航菜单
+  description: 欢迎回家
 navigation:
   - name: 首页
     icon: fas fa-home
