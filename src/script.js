@@ -1,13 +1,22 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // 即时移除loading类，确保侧边栏可见
-    document.body.classList.remove('loading');
-    document.body.classList.add('loaded');
+    // 先声明所有状态变量
+    let isSearchActive = false;
+    let currentPageId = 'home';
+    let isInitialLoad = true;
+    let isSidebarOpen = false;
+    let isSearchOpen = false;
+    let isLightTheme = false; // 主题状态
+    let isSidebarCollapsed = false; // 侧边栏折叠状态
+    let pages; // 页面元素的全局引用
     
+    // 搜索索引，用于提高搜索效率
+    let searchIndex = {
+        initialized: false,
+        items: []
+    };
+    
+    // 获取DOM元素 - 基本元素
     const searchInput = document.getElementById('search');
-    const siteCards = document.querySelectorAll('.site-card');
-    const categories = document.querySelectorAll('.category');
-    const navItems = document.querySelectorAll('.nav-item');
-    const pages = document.querySelectorAll('.page');
     const searchBox = document.querySelector('.search-box');
     const searchResultsPage = document.getElementById('search-results');
     const searchSections = searchResultsPage.querySelectorAll('.search-section');
@@ -19,22 +28,70 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchContainer = document.querySelector('.search-container');
     const overlay = document.querySelector('.overlay');
     
+    // 侧边栏折叠功能
+    const sidebarToggle = document.querySelector('.sidebar-toggle');
+    const content = document.querySelector('.content');
+    
     // 主题切换元素
     const themeToggle = document.querySelector('.theme-toggle');
     const themeIcon = themeToggle.querySelector('i');
     
-    let isSearchActive = false;
-    let currentPageId = 'home';
-    let isInitialLoad = true;
-    let isSidebarOpen = false;
-    let isSearchOpen = false;
-    let isLightTheme = false; // 主题状态
+    // 滚动进度条元素
+    const scrollProgress = document.querySelector('.scroll-progress');
     
-    // 搜索索引，用于提高搜索效率
-    let searchIndex = {
-        initialized: false,
-        items: []
-    };
+    // 移除预加载类，允许CSS过渡效果
+    document.documentElement.classList.remove('preload');
+    
+    // 应用从localStorage读取的主题设置
+    if (document.documentElement.classList.contains('theme-preload')) {
+        document.documentElement.classList.remove('theme-preload');
+        document.body.classList.add('light-theme');
+        isLightTheme = true;
+    }
+    
+    // 应用从localStorage读取的侧边栏状态
+    if (document.documentElement.classList.contains('sidebar-collapsed-preload')) {
+        document.documentElement.classList.remove('sidebar-collapsed-preload');
+        sidebar.classList.add('collapsed');
+        content.classList.add('expanded');
+        isSidebarCollapsed = true;
+    }
+    
+    // 即时移除loading类，确保侧边栏可见
+    document.body.classList.remove('loading');
+    document.body.classList.add('loaded');
+    
+    // 侧边栏折叠功能
+    function toggleSidebarCollapse() {
+        isSidebarCollapsed = !isSidebarCollapsed;
+        
+        // 使用 requestAnimationFrame 确保平滑过渡
+        requestAnimationFrame(() => {
+            sidebar.classList.toggle('collapsed', isSidebarCollapsed);
+            content.classList.toggle('expanded', isSidebarCollapsed);
+            
+            // 保存折叠状态到localStorage
+            localStorage.setItem('sidebarCollapsed', isSidebarCollapsed ? 'true' : 'false');
+        });
+    }
+    
+    // 初始化侧边栏折叠状态 - 已在页面加载前处理，此处仅完成图标状态初始化等次要任务
+    function initSidebarState() {
+        // 从localStorage获取侧边栏状态
+        const savedState = localStorage.getItem('sidebarCollapsed');
+        
+        // 图标状态与折叠状态保持一致
+        if (savedState === 'true' && !isMobile()) {
+            isSidebarCollapsed = true;
+        } else {
+            isSidebarCollapsed = false;
+        }
+    }
+    
+    // 侧边栏折叠按钮点击事件
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener('click', toggleSidebarCollapse);
+    }
     
     // 主题切换功能
     function toggleTheme() {
@@ -54,19 +111,18 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('theme', isLightTheme ? 'light' : 'dark');
     }
     
-    // 初始化主题
+    // 初始化主题 - 已在页面加载前处理，此处仅完成图标状态初始化等次要任务
     function initTheme() {
         // 从localStorage获取主题偏好
         const savedTheme = localStorage.getItem('theme');
         
+        // 更新图标状态以匹配当前主题
         if (savedTheme === 'light') {
             isLightTheme = true;
-            document.body.classList.add('light-theme');
             themeIcon.classList.remove('fa-moon');
             themeIcon.classList.add('fa-sun');
         } else {
             isLightTheme = false;
-            document.body.classList.remove('light-theme');
             themeIcon.classList.remove('fa-sun');
             themeIcon.classList.add('fa-moon');
         }
@@ -83,6 +139,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             // 为每个页面创建索引
+            if (!pages) {
+                pages = document.querySelectorAll('.page');
+            }
+            
             pages.forEach(page => {
                 if (page.id === 'search-results') return;
                 
@@ -171,8 +231,29 @@ document.addEventListener('DOMContentLoaded', () => {
             overlay.classList.remove('active');
             isSidebarOpen = false;
             isSearchOpen = false;
+        } else {
+            // 在移动设备下，重置侧边栏折叠状态
+            sidebar.classList.remove('collapsed');
+            content.classList.remove('expanded');
         }
+        
+        // 重新计算滚动进度
+        updateScrollProgress();
     });
+
+    // 更新滚动进度条
+    function updateScrollProgress() {
+        const scrollTop = content.scrollTop || 0;
+        const scrollHeight = content.scrollHeight - content.clientHeight || 1;
+        const scrollPercent = (scrollTop / scrollHeight) * 100;
+        scrollProgress.style.width = scrollPercent + '%';
+    }
+    
+    // 监听内容区域的滚动事件
+    content.addEventListener('scroll', updateScrollProgress);
+    
+    // 初始化时更新一次滚动进度
+    updateScrollProgress();
 
     // 页面切换功能
     function showPage(pageId, skipSearchReset = false) {
@@ -182,6 +263,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 使用 RAF 确保动画流畅
         requestAnimationFrame(() => {
+            if (!pages) {
+                pages = document.querySelectorAll('.page');
+            }
+            
             pages.forEach(page => {
                 const shouldBeActive = page.id === pageId;
                 if (shouldBeActive !== page.classList.contains('active')) {
@@ -195,6 +280,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.classList.add('loaded');
             }
         });
+        
+        // 重置滚动位置并更新进度条
+        content.scrollTop = 0;
+        updateScrollProgress();
         
         // 只有在非搜索状态下才重置搜索
         if (!skipSearchReset) {
@@ -502,6 +591,10 @@ document.addEventListener('DOMContentLoaded', () => {
             resetSearch();
         } else if (e.key === 'Enter') {
             performSearch(searchInput.value);
+            // 在移动设备上，执行搜索后自动关闭搜索面板
+            if (isMobile() && isSearchOpen) {
+                closeAllPanels();
+            }
         }
     });
 
@@ -512,46 +605,170 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 导航项点击效果
-    navItems.forEach(item => {
-        item.addEventListener('click', (e) => {
-            if (item.getAttribute('target') === '_blank') return;
-            
-            e.preventDefault();
-            navItems.forEach(nav => {
-                nav.classList.toggle('active', nav === item);
-            });
-
-            const pageId = item.getAttribute('data-page');
-            if (pageId) {
-                showPage(pageId);
-            }
-        });
-    });
-
     // 初始化
     window.addEventListener('load', () => {
+        // 获取可能在HTML生成后才存在的DOM元素
+        const siteCards = document.querySelectorAll('.site-card');
+        const categories = document.querySelectorAll('.category');
+        const navItems = document.querySelectorAll('.nav-item');
+        const navItemWrappers = document.querySelectorAll('.nav-item-wrapper');
+        const submenuItems = document.querySelectorAll('.submenu-item');
+        pages = document.querySelectorAll('.page');
+        
         // 初始化主题
         initTheme();
         
-        // 延迟一帧执行初始化，确保样式已经应用
-        requestAnimationFrame(() => {
-            // 显示首页
-            showPage('home');
-            
-            // 添加载入动画
-            categories.forEach((category, index) => {
-                setTimeout(() => {
-                    category.style.opacity = '1';
-                }, index * 100);
-            });
-            
-            // 初始化搜索索引（使用requestIdleCallback或setTimeout延迟初始化，避免影响页面加载）
-            if ('requestIdleCallback' in window) {
-                requestIdleCallback(() => initSearchIndex());
-            } else {
-                setTimeout(initSearchIndex, 1000);
-            }
+        // 初始化侧边栏状态
+        initSidebarState();
+        
+        // 立即执行初始化，不再使用requestAnimationFrame延迟
+        // 显示首页
+        showPage('home');
+        
+        // 添加载入动画
+        categories.forEach((category, index) => {
+            setTimeout(() => {
+                category.style.opacity = '1';
+            }, index * 100);
         });
+        
+        // 初始展开当前页面的子菜单
+        const activeNavItem = document.querySelector('.nav-item.active');
+        if (activeNavItem) {
+            const activeWrapper = activeNavItem.closest('.nav-item-wrapper');
+            if (activeWrapper) {
+            }
+        }
+        
+        // 导航项点击效果
+        navItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                if (item.getAttribute('target') === '_blank') return;
+                
+                e.preventDefault();
+                
+                // 获取当前项的父级wrapper
+                const wrapper = item.closest('.nav-item-wrapper');
+                const hasSubmenu = wrapper && wrapper.querySelector('.submenu');
+                
+                // 处理子菜单展开/折叠
+                if (hasSubmenu) {
+                    // 如果点击的导航项已经激活且有子菜单，则切换子菜单展开状态
+                    if (item.classList.contains('active')) {
+                        wrapper.classList.toggle('expanded');
+                    } else {
+                        // 关闭所有已展开的子菜单
+                        navItemWrappers.forEach(navWrapper => {
+                            if (navWrapper !== wrapper) {
+                                navWrapper.classList.remove('expanded');
+                            }
+                        });
+                        
+                        // 展开当前子菜单
+                        wrapper.classList.add('expanded');
+                    }
+                }
+                
+                // 激活导航项
+                navItems.forEach(nav => {
+                    nav.classList.toggle('active', nav === item);
+                });
+
+                const pageId = item.getAttribute('data-page');
+                if (pageId) {
+                    showPage(pageId);
+                    
+                    // 在移动端视图下点击导航项后自动收起侧边栏
+                    if (isMobile() && isSidebarOpen && !hasSubmenu) {
+                        closeAllPanels();
+                    }
+                }
+            });
+        });
+
+        // 子菜单项点击效果
+        submenuItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                // 获取页面ID和分类名称
+                const pageId = item.getAttribute('data-page');
+                const categoryName = item.getAttribute('data-category');
+                
+                if (pageId) {
+                    // 清除所有子菜单项的激活状态
+                    submenuItems.forEach(subItem => {
+                        subItem.classList.remove('active');
+                    });
+                    
+                    // 激活当前子菜单项
+                    item.classList.add('active');
+                    
+                    // 激活相应的导航项
+                    navItems.forEach(nav => {
+                        nav.classList.toggle('active', nav.getAttribute('data-page') === pageId);
+                    });
+                    
+                    // 显示对应页面
+                    showPage(pageId);
+                    
+                    // 等待页面切换完成后滚动到对应分类
+                    setTimeout(() => {
+                        // 查找目标分类元素
+                        const targetPage = document.getElementById(pageId);
+                        if (targetPage) {
+                            const targetCategory = Array.from(targetPage.querySelectorAll('.category h2')).find(
+                                heading => heading.textContent.trim().includes(categoryName)
+                            );
+                            
+                            if (targetCategory) {
+                                // 优化的滚动实现：滚动到使目标分类位于视口1/4处（更靠近顶部位置）
+                                try {
+                                    // 直接获取所需元素和属性，减少重复查询
+                                    const contentElement = document.querySelector('.content');
+                                    
+                                    if (contentElement && contentElement.scrollHeight > contentElement.clientHeight) {
+                                        // 获取目标元素相对于内容区域的位置
+                                        const rect = targetCategory.getBoundingClientRect();
+                                        const containerRect = contentElement.getBoundingClientRect();
+                                        
+                                        // 计算目标应该在视口中的位置（视口高度的1/4处）
+                                        const desiredPosition = containerRect.height / 4;
+                                        
+                                        // 计算需要滚动的位置
+                                        const scrollPosition = contentElement.scrollTop + rect.top - containerRect.top - desiredPosition;
+                                        
+                                        // 执行滚动
+                                        contentElement.scrollTo({
+                                            top: scrollPosition,
+                                            behavior: 'smooth'
+                                        });
+                                    } else {
+                                        // 回退到基本滚动方式
+                                        targetCategory.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    }
+                                } catch (error) {
+                                    console.error('Error during scroll:', error);
+                                    // 回退到基本滚动方式
+                                    targetCategory.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                }
+                            }
+                        }
+                    }, 25); // 延迟时间
+                    
+                    // 在移动端视图下点击子菜单项后自动收起侧边栏
+                    if (isMobile() && isSidebarOpen) {
+                        closeAllPanels();
+                    }
+                }
+            });
+        });
+        
+        // 初始化搜索索引（使用requestIdleCallback或setTimeout延迟初始化，避免影响页面加载）
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(() => initSearchIndex());
+        } else {
+            setTimeout(initSearchIndex, 1000);
+        }
     });
 }); 
